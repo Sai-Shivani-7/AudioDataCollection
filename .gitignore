@@ -1,0 +1,86 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Build output
+dist/
+build/
+out/
+.vite/
+.parcel-cache/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dev-server*.log
+dev-server*.err.log
+
+# Runtime and temporary files
+tmp/
+temp/
+.tmp/
+.temp/
+pids/
+*.pid
+*.pid.lock
+*.seed
+uploads/
+storage/
+
+# Test and coverage output
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# Package manager caches
+.npm/
+.npm-cache/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnpm-store/
+
+# Editor and IDE files
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
+*.orig
+
+# OS and filesystem noise
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Local certificates and secrets
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Keep lockfiles tracked for reproducible Render deploys
+!package-lock.json
+!*/package-lock.json
+!yarn.lock
+!pnpm-lock.yaml
