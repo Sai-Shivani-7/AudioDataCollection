@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { CircleStop, Mic, RotateCcw, Save, UserPlus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CircleStop, Mic, RotateCcw, Save, UserPlus, CheckCircle2 } from 'lucide-react';
 import { api } from '../api/client';
 import { voiceQuestions } from '../data/voiceQuestions';
 
@@ -81,6 +82,7 @@ async function convertRecordingToWav(recordedBlob) {
 }
 
 export default function UserDashboard({ currentUser }) {
+  const navigate = useNavigate();
   const [sessionId, setSessionId] = useState(() => makeSessionId(currentUser?.id));
   const mediaRecorderRef = useRef(null);
   const speechRecognizerRef = useRef(null);
@@ -101,6 +103,7 @@ export default function UserDashboard({ currentUser }) {
   const [error, setError] = useState('');
   const [progressiveZipUrl, setProgressiveZipUrl] = useState('');
   const [audioCount, setAudioCount] = useState(0);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   const currentQuestion = voiceQuestions[stepIndex];
   const hasAllResponses = Object.keys(savedResponses).length === voiceQuestions.length;
@@ -233,19 +236,15 @@ export default function UserDashboard({ currentUser }) {
       const savedId = response.data.submission?._id;
       if (savedId) setSubmissionId(savedId);
 
-      setSavedResponses((current) => ({ ...current, [currentQuestion.id]: response.data.response }));
+      const newSavedResponses = { ...savedResponses, [currentQuestion.id]: response.data.response };
+      setSavedResponses(newSavedResponses);
       setAudioBlob(null);
       setTranscript('');
       setRecordingStopped(false);
       setDurationMs(0);
       
-      setStatus('Response saved. Audio is stored only inside the ZIP.');
+      setStatus('Saved successfully');
 
-      const cleanupError = response.data.progressiveZipCleanup?.error;
-      if (cleanupError) {
-        setError(`Audio ZIP was saved, but old Drive files could not be removed: ${cleanupError}`);
-      }
-      
       const zipUrl = response.data.submission?.progressiveZipGoogleDriveUrl;
       const count = response.data.progressiveZipAudioCount
         ?? (response.data.submission?.responses ? Object.keys(response.data.submission.responses).length : 0);
@@ -254,11 +253,15 @@ export default function UserDashboard({ currentUser }) {
         setAudioCount(count);
       }
 
-      const nextIndex = Math.min(stepIndex + 1, voiceQuestions.length - 1);
-      if (nextIndex !== stepIndex) setStepIndex(nextIndex);
+      if (Object.keys(newSavedResponses).length === voiceQuestions.length) {
+        setShowCompletionModal(true);
+      } else {
+        const nextIndex = Math.min(stepIndex + 1, voiceQuestions.length - 1);
+        if (nextIndex !== stepIndex) setStepIndex(nextIndex);
+      }
     } catch (requestError) {
-      const errorMsg = requestError.response?.data?.message || 'Unable to save this voice response.';
-      setError(errorMsg);
+      console.error('Save response error:', requestError);
+      setError('Failed to save');
     } finally {
       setLoadingAction('');
     }
@@ -343,7 +346,7 @@ export default function UserDashboard({ currentUser }) {
           <span className={isRecording ? 'recording-dot active' : 'recording-dot'} />
         </div>
 
-        <div className="transcript-panel">
+        <div className="transcript-panel live-transcript-block">
           <span>Live transcript</span>
           <p>{transcript || 'Transcript will appear here when browser speech recognition is available.'}</p>
         </div>
@@ -352,11 +355,6 @@ export default function UserDashboard({ currentUser }) {
       </section>
 
       {status && <p className="success">{status}</p>}
-      {progressiveZipUrl && (
-        <p className="success">
-          ZIP file saved with {audioCount} audio(s).
-        </p>
-      )}
       {error && <p className="error">{error}</p>}
 
       <div className="action-row">
@@ -367,12 +365,56 @@ export default function UserDashboard({ currentUser }) {
           <Save size={18} />
           {loadingAction === 'save' ? 'Saving...' : 'Save and Next'}
         </button>
-        {hasAllResponses && (
-          <p className="inline-status">
-            All answers are saved{submissionId ? ` for submission ${submissionId.slice(-6)}` : ''}. Generate the report from the doctor dashboard.
-          </p>
-        )}
       </div>
+
+      {hasAllResponses && (
+        <div className="form-panel completion-panel" style={{ marginTop: '24px', border: '1px solid #bbf7d0', background: '#f0fdf4' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+            <CheckCircle2 size={24} style={{ color: '#166534' }} />
+            <h3 style={{ color: '#166534', margin: 0, fontSize: '18px' }}>All Recordings Saved</h3>
+          </div>
+          <p style={{ color: '#166534', margin: '0 0 16px 0', fontSize: '14px', lineHeight: '1.5' }}>
+            Please hand this device back to the doctor.
+          </p>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button className="primary" type="button" onClick={() => navigate('/admin')}>
+              Go to Dashboard
+            </button>
+            <button className="secondary" type="button" onClick={startNewPatient}>
+              Record Another Patient
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showCompletionModal && (
+        <div className="modal-overlay">
+          <div className="modal-content text-center">
+            <div style={{ display: 'inline-flex', padding: '16px', background: '#e9f8ef', borderRadius: '50%', color: '#166534', marginBottom: '16px' }}>
+              <CheckCircle2 size={40} />
+            </div>
+            <h2>Recordings Complete!</h2>
+            <p>
+              Thank you. All 3 recordings have been successfully saved.<br />
+              <strong>Please hand this device back to the doctor.</strong>
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <button className="primary" type="button" onClick={() => navigate('/admin')} style={{ justifyContent: 'center' }}>
+                Go to Dashboard
+              </button>
+              <button className="secondary" type="button" onClick={() => {
+                setShowCompletionModal(false);
+                startNewPatient();
+              }} style={{ justifyContent: 'center' }}>
+                Record Another Patient
+              </button>
+              <button className="text-button" type="button" onClick={() => setShowCompletionModal(false)} style={{ color: '#5b6778', fontSize: '13px' }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

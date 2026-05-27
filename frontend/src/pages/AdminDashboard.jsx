@@ -15,9 +15,21 @@ export default function AdminDashboard() {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generatingId, setGeneratingId] = useState('');
-  const [reportCode, setReportCode] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Modal states for action gating
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalCode, setModalCode] = useState('');
+  const [modalError, setModalError] = useState('');
+  const [onModalSuccess, setOnModalSuccess] = useState(null);
+
+  function triggerActionWithCode(callback) {
+    setOnModalSuccess(() => callback);
+    setModalOpen(true);
+    setModalCode('');
+    setModalError('');
+  }
 
   async function loadSubmissions() {
     setLoading(true);
@@ -59,8 +71,6 @@ export default function AdminDashboard() {
     return displayClassification(report.classification);
   }
 
-  const reportsUnlocked = reportCode === '123456';
-
   function responseStatus(responses, questionId, label) {
     return `${label} status: ${responses[questionId] ? 'saved' : 'pending'}`;
   }
@@ -89,18 +99,7 @@ export default function AdminDashboard() {
         </div>
       </header>
 
-      <section className="form-panel report-code-panel">
-        <label className="field">
-          <span>Report code</span>
-          <input
-            type="password"
-            value={reportCode}
-            onChange={(event) => setReportCode(event.target.value)}
-            placeholder="Enter code to enable report generation"
-          />
-        </label>
-        <p className="inline-status">{reportsUnlocked ? 'Report generation enabled.' : 'Enter the doctor code to show generate buttons.'}</p>
-      </section>
+
 
       {error && <p className="error">{error}</p>}
       {success && <p className="success">{success}</p>}
@@ -133,22 +132,24 @@ export default function AdminDashboard() {
                     <td>{getReportSummary(submission.report)}</td>
                     <td>
                       <div className="table-actions">
-                        {reportsUnlocked && submission.report && (
-                          <button className="secondary" type="button" onClick={() => navigate(`/report/${submission._id}`)}>
+                        {submission.report && (
+                          <button
+                            className="secondary"
+                            type="button"
+                            onClick={() => triggerActionWithCode(() => navigate(`/report/${submission._id}`))}
+                          >
                             <Eye size={16} />
                             View Report
                           </button>
                         )}
-                        {reportsUnlocked && (
-                          <button
-                            type="button"
-                            onClick={() => generateReport(submission._id)}
-                            disabled={generatingId === submission._id || responseCount === 0}
-                          >
-                            <Sparkles size={16} />
-                            {generatingId === submission._id ? 'Generating...' : submission.report ? 'Regenerate' : 'Generate'}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => triggerActionWithCode(() => generateReport(submission._id))}
+                          disabled={generatingId === submission._id || responseCount === 0}
+                        >
+                          <Sparkles size={16} />
+                          {generatingId === submission._id ? 'Generating...' : submission.report ? 'Regenerate' : 'Generate'}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -157,6 +158,49 @@ export default function AdminDashboard() {
             </tbody>
           </table>
           {submissions.length === 0 && <p className="inline-status">No voice responses have been saved yet.</p>}
+        </div>
+      )}
+
+      {modalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>Enter Access Code</h2>
+            <p>Please enter the doctor access code to execute this action.</p>
+            {modalError && <p className="error" style={{ marginTop: 0, marginBottom: '16px' }}>{modalError}</p>}
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (modalCode === '123456') {
+                if (onModalSuccess) onModalSuccess();
+                setModalOpen(false);
+                setModalCode('');
+                setModalError('');
+              } else {
+                setModalError('Incorrect code. Please try again.');
+              }
+            }}>
+              <label className="field">
+                <input
+                  type="password"
+                  value={modalCode}
+                  onChange={(e) => setModalCode(e.target.value)}
+                  placeholder="Enter code"
+                  autoFocus
+                />
+              </label>
+              <div className="action-row" style={{ marginTop: '16px' }}>
+                <button className="secondary" type="button" onClick={() => {
+                  setModalOpen(false);
+                  setModalCode('');
+                  setModalError('');
+                }}>
+                  Cancel
+                </button>
+                <button className="primary" type="submit">
+                  Confirm
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </main>

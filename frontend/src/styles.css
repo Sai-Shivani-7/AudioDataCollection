@@ -912,4 +912,50 @@ td {
   .report {
     padding: 20px;
   }
+
+  .live-transcript-block {
+    display: none !important;
+  }
+}
+
+/* Modal overlay styling */
+.modal-overlay {
+  align-items: center;
+  background: rgba(20, 33, 61, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  left: 0;
+  position: fixed;
+  top: 0;
+  width: 100%;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 24px 48px rgba(20, 33, 61, 0.18);
+  max-width: 440px;
+  padding: 32px;
+  width: 90%;
+  border: 1px solid #d9e0ea;
+}
+
+.modal-content.text-center {
+  text-align: center;
+}
+
+.modal-content h2 {
+  color: #14213d;
+  font-size: 24px;
+  margin: 0 0 12px;
+}
+
+.modal-content p {
+  color: #5b6778;
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 0 0 20px;
 }
