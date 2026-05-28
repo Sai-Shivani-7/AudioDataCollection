@@ -273,7 +273,7 @@ export default function UserDashboard({ currentUser }) {
         <div>
           <p className="eyebrow">Patient Recording</p>
           <h1>Speech Analysis</h1>
-          <p>Record three patient voice prompts. Reports are generated later from the doctor dashboard.</p>
+          <p>Record patient voice prompts. Reports are generated later from the doctor dashboard.</p>
         </div>
         <button className="secondary" type="button" onClick={startNewPatient}>
           <UserPlus size={18} />
@@ -292,7 +292,7 @@ export default function UserDashboard({ currentUser }) {
         </label>
       </section>
 
-      <div className="stepper three">
+      <div className={voiceQuestions.length === 3 ? "stepper three" : "stepper"}>
         {voiceQuestions.map((question, index) => (
           <button
             key={question.id}
@@ -308,8 +308,38 @@ export default function UserDashboard({ currentUser }) {
 
       <section className="form-panel recorder-panel">
         <div className="panel-heading">
-          <h2>Question {stepIndex + 1}</h2>
-          <p>{currentQuestion.text}</p>
+          <h2>{currentQuestion.isEmotionReading ? 'Emotion Reading' : `Question ${stepIndex + 1}`}</h2>
+          {currentQuestion.isEmotionReading ? (
+            <div style={{ marginTop: '12px' }}>
+              <p style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '16px', color: '#1e293b' }}>
+                Read the following sentences with their emotion:
+              </p>
+              <div style={{ display: 'grid', gap: '16px' }}>
+                {currentQuestion.emotions.map((group) => (
+                  <div key={group.emotion} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px' }}>
+                    <span className="eyebrow" style={{ 
+                      color: group.emotion === 'Calm' ? '#0f766e' : 
+                             group.emotion === 'Anger' ? '#be123c' : 
+                             group.emotion === 'Fear' ? '#c2410c' : '#047857', 
+                      display: 'block', 
+                      marginBottom: '8px',
+                      fontWeight: '800'
+                    }}>
+                      {group.emotion}
+                    </span>
+                    <p style={{ margin: 0, color: '#334155', lineHeight: '1.6', fontSize: '14px' }}>{group.sentence}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              <p style={{ fontSize: '16px', color: '#1e293b', marginBottom: '8px' }}>{currentQuestion.text}</p>
+              <p style={{ fontStyle: 'italic', color: '#0f766e', fontWeight: '600', margin: '4px 0 0 0', fontSize: '13px' }}>
+                * Please speak for at least 1 minute.
+              </p>
+            </>
+          )}
         </div>
 
         {currentQuestionSaved && !audioBlob && !isRecording && (
@@ -395,7 +425,7 @@ export default function UserDashboard({ currentUser }) {
             </div>
             <h2>Recordings Complete!</h2>
             <p>
-              Thank you. All 3 recordings have been successfully saved.<br />
+              Thank you. All 4 recordings have been successfully saved.<br />
               <strong>Please hand this device back to the doctor.</strong>
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

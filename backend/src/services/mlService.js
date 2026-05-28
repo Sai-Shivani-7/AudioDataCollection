@@ -223,12 +223,12 @@ function buildQuestionResult({ rawTranscript = '', normalizedTranscript = '', fi
 
 function orderedResponses(submission) {
   const responses = Object.fromEntries(submission.responses || []);
-  return ['q1', 'q2', 'q3'].map((id) => responses[id]).filter(Boolean);
+  return ['q1', 'q2', 'q3', 'q4'].map((id) => responses[id]).filter(Boolean);
 }
 
 function orderedResponseEntries(submission) {
   const responses = Object.fromEntries(submission.responses || []);
-  return ['q1', 'q2', 'q3']
+  return ['q1', 'q2', 'q3', 'q4']
     .filter((id) => responses[id])
     .map((id) => [id, responses[id]]);
 }

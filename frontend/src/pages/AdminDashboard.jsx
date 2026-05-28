@@ -76,7 +76,7 @@ export default function AdminDashboard() {
   }
 
   function responseSummary(responses) {
-    return ['q1', 'q2', 'q3'].map((id, index) => responseStatus(responses, id, `Q${index + 1}`)).join(', ');
+    return ['q1', 'q2', 'q3', 'q4'].map((id, index) => responseStatus(responses, id, `Q${index + 1}`)).join(', ');
   }
 
   return (

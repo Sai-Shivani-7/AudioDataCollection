@@ -86,7 +86,7 @@ async function existingProgressiveAudioEntries(submission) {
   try {
     const zipBuffer = await downloadFileFromDrive(submission.progressiveZipGoogleDriveFileId);
     return extractZipEntries(zipBuffer)
-      .filter((entry) => /^q[1-3]\.wav$/i.test(entry.name))
+      .filter((entry) => /^q[1-4]\.wav$/i.test(entry.name))
       .map((entry) => ({ name: `audios/${entry.name}`, content: entry.content }));
   } catch (zipError) {
     console.warn('Previous progressive ZIP could not be reused:', zipError.message);
@@ -131,7 +131,7 @@ async function buildProgressiveAudioZip(submission, currentAudio) {
     filesByName.set(`${currentAudio.questionId}.wav`, currentAudio.buffer);
   }
 
-  const files = ['q1', 'q2', 'q3']
+  const files = ['q1', 'q2', 'q3', 'q4']
     .map((questionId) => {
       const response = submission.responses?.get(questionId);
       const name = `${questionId}.${extensionFromAudio(response)}`;
@@ -259,7 +259,7 @@ async function saveVoiceResponse(req, res, next) {
     submission.combinedTranscript = buildCombinedTranscript(submission);
     submission.combinedResult = buildCombinedResult(submission);
 
-    submission.status = submission.responses.size >= 3 ? 'completed' : 'in-progress';
+    submission.status = submission.responses.size >= 4 ? 'completed' : 'in-progress';
 
     await submission.save();
 
@@ -426,7 +426,7 @@ async function generateReport(req, res, next) {
       zipFileUrl: submission.progressiveZipFileUrl,
       zipGoogleDriveUrl: submission.progressiveZipGoogleDriveUrl,
       zipUploadError: submission.progressiveZipUploadError,
-      zipEntries: ['q1.wav', 'q2.wav', 'q3.wav'].filter((entry) => submission.responses?.has(entry.replace(/\.wav$/, ''))),
+      zipEntries: ['q1.wav', 'q2.wav', 'q3.wav', 'q4.wav'].filter((entry) => submission.responses?.has(entry.replace(/\.wav$/, ''))),
       submission: serializeSubmission(submission),
     });
   } catch (error) {
