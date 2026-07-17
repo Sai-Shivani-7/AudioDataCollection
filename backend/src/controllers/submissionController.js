@@ -86,8 +86,11 @@ async function existingProgressiveAudioEntries(submission) {
   try {
     const zipBuffer = await downloadFileFromDrive(submission.progressiveZipGoogleDriveFileId);
     return extractZipEntries(zipBuffer)
-      .filter((entry) => /^q[1-4]\.wav$/i.test(entry.name))
-      .map((entry) => ({ name: `audios/${entry.name}`, content: entry.content }));
+      .filter((entry) => /^(audios\/)?(q[1-4]|session)\.wav$/i.test(entry.name))
+      .map((entry) => ({
+        name: entry.name.startsWith('audios/') ? entry.name : `audios/${entry.name}`,
+        content: entry.content,
+      }));
   } catch (zipError) {
     console.warn('Previous progressive ZIP could not be reused:', zipError.message);
     return [];
@@ -131,16 +134,34 @@ async function buildProgressiveAudioZip(submission, currentAudio) {
     filesByName.set(`${currentAudio.questionId}.wav`, currentAudio.buffer);
   }
 
-  const files = ['q1', 'q2', 'q3', 'q4']
-    .map((questionId) => {
-      const response = submission.responses?.get(questionId);
+  const responseEntries = Array.from(submission.responses || []);
+  const orderedEntries = responseEntries.sort(([leftId], [rightId]) => {
+    const order = ['q1', 'q2', 'q3', 'q4', 'session'];
+    const leftIndex = order.indexOf(leftId);
+    const rightIndex = order.indexOf(rightId);
+    return (leftIndex === -1 ? order.length : leftIndex) - (rightIndex === -1 ? order.length : rightIndex);
+  });
+
+  const audioFiles = orderedEntries
+    .map(([questionId, response]) => {
       const name = `${questionId}.${extensionFromAudio(response)}`;
       const content = filesByName.get(name);
-      return content ? { name, content } : null;
+      return content ? { name: `audios/${name}`, content } : null;
     })
     .filter(Boolean);
 
-  const audioCount = files.length;
+  const transcriptFiles = orderedEntries
+    .map(([questionId, response]) => {
+      const transcript = response?.transcripts?.raw || '';
+      return transcript
+        ? { name: `transcripts/${questionId}.txt`, content: Buffer.from(transcript, 'utf8') }
+        : null;
+    })
+    .filter(Boolean);
+
+  const files = [...audioFiles, ...transcriptFiles];
+
+  const audioCount = audioFiles.length;
   const zipFileName = `${getParticipantSessionPrefix(submission)}-audios.zip`;
   const zipBuffer = createZip(files);
   console.log(`Built progressive ZIP ${zipFileName} with ${audioCount} audio(s)`);
@@ -259,7 +280,7 @@ async function saveVoiceResponse(req, res, next) {
     submission.combinedTranscript = buildCombinedTranscript(submission);
     submission.combinedResult = buildCombinedResult(submission);
 
-    submission.status = submission.responses.size >= 4 ? 'completed' : 'in-progress';
+    submission.status = questionId === 'session' || submission.responses.size >= 4 ? 'completed' : 'in-progress';
 
     await submission.save();
 
@@ -426,7 +447,7 @@ async function generateReport(req, res, next) {
       zipFileUrl: submission.progressiveZipFileUrl,
       zipGoogleDriveUrl: submission.progressiveZipGoogleDriveUrl,
       zipUploadError: submission.progressiveZipUploadError,
-      zipEntries: ['q1.wav', 'q2.wav', 'q3.wav', 'q4.wav'].filter((entry) => submission.responses?.has(entry.replace(/\.wav$/, ''))),
+      zipEntries: Array.from(submission.responses || []).map(([questionId]) => `${questionId}.wav`),
       submission: serializeSubmission(submission),
     });
   } catch (error) {

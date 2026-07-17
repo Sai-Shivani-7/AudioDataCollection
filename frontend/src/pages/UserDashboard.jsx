@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CircleStop, Mic, RotateCcw, Save, UserPlus, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, CircleStop, ClipboardList, Mic, MessagesSquare, RotateCcw, Save, UserPlus } from 'lucide-react';
 import { api } from '../api/client';
 import { voiceQuestions } from '../data/voiceQuestions';
 
@@ -97,13 +97,11 @@ export default function UserDashboard({ currentUser }) {
   const [recordingStopped, setRecordingStopped] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [savedResponses, setSavedResponses] = useState({});
-  const [submissionId, setSubmissionId] = useState('');
   const [loadingAction, setLoadingAction] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
-  const [progressiveZipUrl, setProgressiveZipUrl] = useState('');
-  const [audioCount, setAudioCount] = useState(0);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [recordingMode, setRecordingMode] = useState('');
 
   const currentQuestion = voiceQuestions[stepIndex];
   const hasAllResponses = Object.keys(savedResponses).length === voiceQuestions.length;
@@ -130,9 +128,14 @@ export default function UserDashboard({ currentUser }) {
     setStepIndex(index);
   }
 
+  function returnToModeChoice() {
+    resetRecordingState();
+    setRecordingMode('');
+  }
+
   async function startRecording() {
     if (!patient.name.trim()) {
-      setError('Enter the patient name before recording.');
+      setError(recordingMode === 'session' ? 'Enter the patient ID before recording.' : 'Enter the patient name before recording.');
       return;
     }
 
@@ -200,15 +203,13 @@ export default function UserDashboard({ currentUser }) {
     setPatient({ name: '', contact: '' });
     setStepIndex(0);
     setSavedResponses({});
-    setSubmissionId('');
     setAudioBlob(null);
     setRecordingStopped(false);
     setTranscript('');
     setDurationMs(0);
     setStatus('');
     setError('');
-    setProgressiveZipUrl('');
-    setAudioCount(0);
+    setShowCompletionModal(false);
   }
 
   async function saveAndNext() {
@@ -233,8 +234,6 @@ export default function UserDashboard({ currentUser }) {
       payload.append('audio', audioBlob, `${currentQuestion.id}.wav`);
 
       const response = await api.post('/upload-voice-response', payload);
-      const savedId = response.data.submission?._id;
-      if (savedId) setSubmissionId(savedId);
 
       const newSavedResponses = { ...savedResponses, [currentQuestion.id]: response.data.response };
       setSavedResponses(newSavedResponses);
@@ -244,14 +243,6 @@ export default function UserDashboard({ currentUser }) {
       setDurationMs(0);
       
       setStatus('Saved successfully');
-
-      const zipUrl = response.data.submission?.progressiveZipGoogleDriveUrl;
-      const count = response.data.progressiveZipAudioCount
-        ?? (response.data.submission?.responses ? Object.keys(response.data.submission.responses).length : 0);
-      if (zipUrl) {
-        setProgressiveZipUrl(zipUrl);
-        setAudioCount(count);
-      }
 
       if (Object.keys(newSavedResponses).length === voiceQuestions.length) {
         setShowCompletionModal(true);
@@ -267,6 +258,150 @@ export default function UserDashboard({ currentUser }) {
     }
   }
 
+  async function saveEntireSession() {
+    if (!audioBlob) {
+      setError('Record the session before saving.');
+      return;
+    }
+
+    setLoadingAction('save-session');
+    setError('');
+    setStatus('');
+
+    try {
+      const payload = new FormData();
+      payload.append('sessionId', sessionId);
+      payload.append('userName', patient.name);
+      payload.append('userContact', patient.contact);
+      payload.append('questionId', 'session');
+      payload.append('question', 'Entire clinical session');
+      payload.append('rawTranscript', transcript);
+      payload.append('durationMs', String(durationMs));
+      payload.append('audio', audioBlob, 'session.wav');
+
+      const response = await api.post('/upload-voice-response', payload);
+      setSavedResponses({ session: response.data.response });
+      setAudioBlob(null);
+      setRecordingStopped(false);
+      setDurationMs(0);
+      setStatus('Entire session saved successfully. Audio and transcript were added to the Drive ZIP.');
+    } catch (requestError) {
+      console.error('Save session error:', requestError);
+      setError(requestError.response?.data?.message || 'Failed to save session');
+    } finally {
+      setLoadingAction('');
+    }
+  }
+
+  if (!recordingMode) {
+    return (
+      <main className="page">
+        <header className="page-header">
+          <div>
+            <p className="eyebrow">Patient Recording</p>
+            <h1>Choose Recording Type</h1>
+            <p>Select whether to capture one continuous session or use the guided question-and-answer prompts.</p>
+          </div>
+        </header>
+
+        <section className="mode-grid">
+          <button className="mode-option" type="button" onClick={() => setRecordingMode('session')}>
+            <ClipboardList size={28} />
+            <strong>Record Entire Session</strong>
+            <span>Capture one continuous patient session with a live transcript.</span>
+          </button>
+          <button className="mode-option" type="button" onClick={() => setRecordingMode('qa')}>
+            <MessagesSquare size={28} />
+            <strong>Question and Answer</strong>
+            <span>Use the existing four-question recording workflow.</span>
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  if (recordingMode === 'session') {
+    return (
+      <main className="page">
+        <header className="page-header">
+          <div>
+            <p className="eyebrow">Patient Recording</p>
+            <h1>Record Entire Session</h1>
+            <p>Capture the full appointment audio and live transcript in one saved record.</p>
+          </div>
+          <div className="header-actions">
+            <button className="secondary" type="button" onClick={returnToModeChoice}>
+              Back
+            </button>
+            <button className="secondary" type="button" onClick={startNewPatient}>
+              <UserPlus size={18} />
+              New Session
+            </button>
+          </div>
+        </header>
+
+        <section className="form-panel profile-panel">
+          <label className="field">
+            <span>Patient ID</span>
+            <input value={patient.name} onChange={(event) => setPatient((current) => ({ ...current, name: event.target.value }))} />
+          </label>
+          <label className="field">
+            <span>Contact</span>
+            <input value={patient.contact} onChange={(event) => setPatient((current) => ({ ...current, contact: event.target.value }))} />
+          </label>
+        </section>
+
+        <section className="form-panel recorder-panel">
+          <div className="panel-heading">
+            <h2>Session Recorder</h2>
+            <p>Record the entire clinical session in one continuous audio file.</p>
+          </div>
+
+          <div className="recorder-controls">
+            {!isRecording ? (
+              <button className={recordingStopped ? 'secondary disabled-look' : 'primary'} type="button" onClick={startRecording} disabled={recordingStopped}>
+                <Mic size={18} />
+                Start Recording
+              </button>
+            ) : (
+              <button type="button" onClick={stopRecording}>
+                <CircleStop size={18} />
+                Stop Recording
+              </button>
+            )}
+            {recordingStopped && (
+              <button className="secondary" type="button" onClick={rerecord}>
+                <RotateCcw size={18} />
+                Re-record
+              </button>
+            )}
+            <span className={isRecording ? 'recording-dot active' : 'recording-dot'} />
+          </div>
+
+          <div className="transcript-panel live-transcript-block">
+            <span>Live transcript</span>
+            <p>{transcript || 'Transcript will appear here when browser speech recognition is available.'}</p>
+          </div>
+
+          {audioBlob && <p className="inline-status">Session recording is ready to save.</p>}
+        </section>
+
+        {status && <p className="success">{status}</p>}
+        {error && <p className="error">{error}</p>}
+
+        <div className="action-row">
+          <button className="secondary" type="button" onClick={returnToModeChoice}>
+            Back
+          </button>
+          <button type="button" onClick={saveEntireSession} disabled={loadingAction !== '' || !audioBlob}>
+            <Save size={18} />
+            {loadingAction === 'save-session' ? 'Saving...' : 'Save Session'}
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="page">
       <header className="page-header">
@@ -275,10 +410,15 @@ export default function UserDashboard({ currentUser }) {
           <h1>Speech Analysis</h1>
           <p>Record patient voice prompts. Reports are generated later from the doctor dashboard.</p>
         </div>
-        <button className="secondary" type="button" onClick={startNewPatient}>
-          <UserPlus size={18} />
-          New Patient
-        </button>
+        <div className="header-actions">
+          <button className="secondary" type="button" onClick={returnToModeChoice}>
+            Back
+          </button>
+          <button className="secondary" type="button" onClick={startNewPatient}>
+            <UserPlus size={18} />
+            New Patient
+          </button>
+        </div>
       </header>
 
       <section className="form-panel profile-panel">

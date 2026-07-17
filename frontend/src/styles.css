@@ -251,6 +251,46 @@ button,
   margin-bottom: 18px;
 }
 
+.mode-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mode-option {
+  align-items: flex-start;
+  background: #ffffff;
+  border: 1px solid #d9e0ea;
+  border-radius: 8px;
+  box-shadow: 0 18px 40px rgba(20, 33, 61, 0.06);
+  color: #233044;
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  min-height: 190px;
+  padding: 28px;
+  text-align: left;
+}
+
+.mode-option:hover {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
+}
+
+.mode-option svg {
+  color: #0f766e;
+}
+
+.mode-option strong {
+  color: #14213d;
+  font-size: 22px;
+}
+
+.mode-option span {
+  color: #5b6778;
+  font-weight: 600;
+}
+
 .report-code-panel {
   align-items: end;
   display: grid;
@@ -898,6 +938,7 @@ td {
   }
 
   .stepper,
+  .mode-grid,
   .profile-panel,
   .report-code-panel,
   .field-grid,
@@ -913,9 +954,6 @@ td {
     padding: 20px;
   }
 
-  .live-transcript-block {
-    display: none !important;
-  }
 }
 
 /* Modal overlay styling */

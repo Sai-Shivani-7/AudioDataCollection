@@ -76,6 +76,7 @@ export default function AdminDashboard() {
   }
 
   function responseSummary(responses) {
+    if (responses.session) return 'Entire session status: saved';
     return ['q1', 'q2', 'q3', 'q4'].map((id, index) => responseStatus(responses, id, `Q${index + 1}`)).join(', ');
   }
 
