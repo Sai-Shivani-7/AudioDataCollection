@@ -223,19 +223,22 @@ function buildQuestionResult({ rawTranscript = '', normalizedTranscript = '', fi
 
 function orderedResponses(submission) {
   const responses = Object.fromEntries(submission.responses || []);
-  return ['q1', 'q2', 'q3', 'q4'].map((id) => responses[id]).filter(Boolean);
+  return ['q1', 'q2', 'q3', 'q4', 'session'].map((id) => responses[id]).filter(Boolean);
 }
 
 function orderedResponseEntries(submission) {
   const responses = Object.fromEntries(submission.responses || []);
-  return ['q1', 'q2', 'q3', 'q4']
+  return ['q1', 'q2', 'q3', 'q4', 'session']
     .filter((id) => responses[id])
     .map((id) => [id, responses[id]]);
 }
 
 function buildCombinedTranscript(submission) {
   return orderedResponses(submission)
-    .map((response, index) => `Question ${index + 1}: ${response.question}\nTranscript: ${response.transcripts?.normalized || response.transcripts?.raw || ''}`)
+    .map((response, index) => {
+      const label = response.questionId === 'session' ? 'Entire Session' : `Question ${index + 1}`;
+      return `${label}: ${response.question}\nTranscript: ${response.transcripts?.normalized || response.transcripts?.raw || ''}`;
+    })
     .join('\n\n');
 }
 
@@ -254,7 +257,7 @@ function buildCumulativeTranscript(entries, uptoIndex) {
   return entries
     .slice(0, uptoIndex + 1)
     .map(([questionId, response]) => {
-      const label = questionId.replace(/^q/, 'Question ');
+      const label = questionId === 'session' ? 'Entire Session' : questionId.replace(/^q/, 'Question ');
       return `${label}: ${response.question}\nTranscript: ${transcriptForResponse(response)}`;
     })
     .join('\n\n');

@@ -242,7 +242,13 @@ export default function UserDashboard({ currentUser }) {
       setRecordingStopped(false);
       setDurationMs(0);
       
-      setStatus('Saved successfully');
+      const driveError = response.data.progressiveZipError || response.data.submission?.progressiveZipUploadError;
+      if (driveError) {
+        setStatus('Saved locally, but Drive upload failed.');
+        setError(`Google Drive upload failed: ${driveError}`);
+      } else {
+        setStatus('Saved successfully');
+      }
 
       if (Object.keys(newSavedResponses).length === voiceQuestions.length) {
         setShowCompletionModal(true);
@@ -284,7 +290,13 @@ export default function UserDashboard({ currentUser }) {
       setAudioBlob(null);
       setRecordingStopped(false);
       setDurationMs(0);
-      setStatus('Entire session saved successfully. Audio and transcript were added to the Drive ZIP.');
+      const driveError = response.data.progressiveZipError || response.data.submission?.progressiveZipUploadError;
+      if (driveError) {
+        setStatus('Session saved locally, but Drive upload failed.');
+        setError(`Google Drive upload failed: ${driveError}`);
+      } else {
+        setStatus('Entire session saved successfully. Audio and transcript were added to the Drive ZIP.');
+      }
     } catch (requestError) {
       console.error('Save session error:', requestError);
       setError(requestError.response?.data?.message || 'Failed to save session');

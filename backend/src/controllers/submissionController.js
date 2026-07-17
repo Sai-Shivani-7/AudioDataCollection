@@ -5,6 +5,7 @@ const {
   downloadFileFromDrive,
   exchangeOAuthCode,
   exchangeDeviceCode,
+  getDriveStatus,
   saveRefreshTokenToEnv,
   startDeviceAuthorization,
   updateZipInDrive,
@@ -18,6 +19,7 @@ const {
   buildStructuredSubmissionJson,
   normalizeTranscript,
 } = require('../services/mlService');
+const { buildSpectrogramFromWav } = require('../services/spectrogramService');
 const { createZip, extractZipEntries } = require('../services/zipService');
 
 function sanitizeFolderSegment(value = 'participant') {
@@ -152,21 +154,72 @@ async function buildProgressiveAudioZip(submission, currentAudio) {
 
   const transcriptFiles = orderedEntries
     .map(([questionId, response]) => {
-      const transcript = response?.transcripts?.raw || '';
-      return transcript
-        ? { name: `transcripts/${questionId}.txt`, content: Buffer.from(transcript, 'utf8') }
+      const raw = response?.transcripts?.raw || '';
+      const normalized = response?.transcripts?.normalized || '';
+      const transcript = [
+        `Question ID: ${questionId}`,
+        `Prompt: ${response?.question || ''}`,
+        '',
+        'Raw transcript:',
+        raw || '(No live transcript captured by the browser.)',
+        '',
+        'Normalized transcript:',
+        normalized || '(No normalized transcript available.)',
+        '',
+      ].join('\n');
+      return { name: `transcripts/${questionId}.txt`, content: Buffer.from(transcript, 'utf8') };
+    });
+
+  const spectrogramFiles = orderedEntries
+    .map(([questionId, response]) => {
+      const spectrogram = response?.spectrogram;
+      return spectrogram?.data
+        ? {
+            name: `spectrograms/${questionId}.svg`,
+            content: Buffer.from(spectrogram.data, spectrogram.encoding === 'base64' ? 'base64' : 'utf8'),
+          }
         : null;
     })
     .filter(Boolean);
 
-  const files = [...audioFiles, ...transcriptFiles];
+  const spectrogramErrorFiles = orderedEntries
+    .map(([questionId, response]) => (
+      response?.spectrogramError
+        ? {
+            name: `spectrograms/${questionId}-error.txt`,
+            content: Buffer.from(response.spectrogramError, 'utf8'),
+          }
+        : null
+    ))
+    .filter(Boolean);
+
+  const manifest = {
+    generatedAt: new Date().toISOString(),
+    entries: orderedEntries.map(([questionId, response]) => ({
+      questionId,
+      prompt: response?.question || '',
+      audio: audioFiles.some((file) => file.name === `audios/${questionId}.wav`) ? `audios/${questionId}.wav` : null,
+      transcript: `transcripts/${questionId}.txt`,
+      spectrogram: response?.spectrogram?.data ? `spectrograms/${questionId}.svg` : null,
+      spectrogramError: response?.spectrogramError || null,
+    })),
+  };
+
+  const files = [
+    { name: 'manifest.json', content: Buffer.from(JSON.stringify(manifest, null, 2), 'utf8') },
+    ...audioFiles,
+    ...transcriptFiles,
+    ...spectrogramFiles,
+    ...spectrogramErrorFiles,
+  ];
 
   const audioCount = audioFiles.length;
   const zipFileName = `${getParticipantSessionPrefix(submission)}-audios.zip`;
   const zipBuffer = createZip(files);
-  console.log(`Built progressive ZIP ${zipFileName} with ${audioCount} audio(s)`);
+  const zipEntries = files.map((file) => file.name);
+  console.log(`Built progressive ZIP ${zipFileName} with entries: ${zipEntries.join(', ')}`);
 
-  return { zipFileName, zipBuffer, fileCount: audioCount };
+  return { zipFileName, zipBuffer, fileCount: audioCount, zipEntries };
 }
 
 async function uploadProgressiveAudioZipToDrive(submission, zipBuffer, zipFileName) {
@@ -261,6 +314,18 @@ async function saveVoiceResponse(req, res, next) {
       normalizedTranscript,
       fileName: req.file.originalname || `${questionId}.wav`,
     });
+    let spectrogram = null;
+    let spectrogramError = null;
+    try {
+      spectrogram = buildSpectrogramFromWav(req.file.buffer, {
+        fileName: `${questionId}-spectrogram.svg`,
+        title: `${questionId} spectrogram`,
+      });
+    } catch (error) {
+      spectrogramError = error.message;
+      console.warn(`Spectrogram generation failed for ${questionId}:`, spectrogramError);
+    }
+
     const response = {
       questionId,
       question,
@@ -271,6 +336,8 @@ async function saveVoiceResponse(req, res, next) {
         raw: rawTranscript,
         normalized: normalizedTranscript,
       },
+      spectrogram,
+      spectrogramError,
       result,
       savedAt: new Date(),
     };
@@ -286,15 +353,17 @@ async function saveVoiceResponse(req, res, next) {
 
     let progressiveZipError = null;
     let progressiveZipCleanup = null;
+    let progressiveZipEntries = [];
     try {
-      const { zipFileName, zipBuffer, fileCount } = await buildProgressiveAudioZip(submission, {
+      const { zipFileName, zipBuffer, fileCount, zipEntries } = await buildProgressiveAudioZip(submission, {
         questionId,
         buffer: req.file.buffer,
       });
+      progressiveZipEntries = zipEntries;
       const uploadResult = await uploadProgressiveAudioZipToDrive(submission, zipBuffer, zipFileName);
       progressiveZipCleanup = uploadResult.cleanupResult;
       await submission.save();
-      console.log(`Progressive ZIP created with ${fileCount} audio(s)`);
+      console.log(`Progressive ZIP created with ${fileCount} audio(s). Entries: ${zipEntries.join(', ')}`);
     } catch (zipError) {
       progressiveZipError = zipError.message;
       console.warn(`Progressive ZIP creation/upload failed:`, progressiveZipError);
@@ -305,8 +374,9 @@ async function saveVoiceResponse(req, res, next) {
       response: withoutStandaloneAudioFields(response), 
       submission: serializeSubmission(submission),
       progressiveZipAudioCount: submission.responses.size,
+      progressiveZipEntries,
       progressiveZipCleanup,
-      progressiveZipError,
+      progressiveZipError: progressiveZipError || submission.progressiveZipUploadError || null,
     });
   } catch (error) {
     next(error);
@@ -398,6 +468,15 @@ async function googleDriveDeviceToken(req, res, next) {
     if (['authorization_pending', 'slow_down'].includes(error.googleError)) {
       return res.status(428).json({ message: 'Google authorization is not completed yet. Approve access, then retry this request.' });
     }
+    next(error);
+  }
+}
+
+async function googleDriveStatus(req, res, next) {
+  try {
+    const status = await getDriveStatus();
+    res.json(status);
+  } catch (error) {
     next(error);
   }
 }
@@ -519,6 +598,7 @@ module.exports = {
   googleDriveOAuthCallback,
   googleDriveDeviceAuth,
   googleDriveDeviceToken,
+  googleDriveStatus,
   generateReport,
   getReport,
   getAdminUsers,

@@ -5,6 +5,19 @@ const path = require('path');
 const DEFAULT_DRIVE_FOLDER_ID = '1MK3Ij9MELNfHnp3MN4T07-UgdgUtDAQp';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 
+function normalizeDriveFolderId(value = DEFAULT_DRIVE_FOLDER_ID) {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return '';
+
+  const folderMatch = rawValue.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folderMatch) return folderMatch[1];
+
+  const idMatch = rawValue.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idMatch) return idMatch[1];
+
+  return rawValue;
+}
+
 function base64Url(input) {
   return Buffer.from(input)
     .toString('base64')
@@ -236,6 +249,7 @@ async function uploadFileToDrive({
   fileId,
 }) {
   const accessToken = await getAccessToken();
+  const targetFolderId = normalizeDriveFolderId(folderId);
   if (!accessToken) {
     const error = new Error('Google Drive upload is not configured. Set GOOGLE_DRIVE_ACCESS_TOKEN or service account credentials.');
     error.status = 503;
@@ -243,9 +257,9 @@ async function uploadFileToDrive({
   }
 
   let existingFileId = fileId || null;
-  if (!existingFileId && folderId) {
+  if (!existingFileId && targetFolderId) {
     const escapedName = fileName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const query = `name = '${escapedName}' and '${folderId}' in parents and trashed = false`;
+    const query = `name = '${escapedName}' and '${targetFolderId}' in parents and trashed = false`;
     const searchUrl = new URL('https://www.googleapis.com/drive/v3/files');
     searchUrl.searchParams.set('q', query);
     searchUrl.searchParams.set('fields', 'files(id,name)');
@@ -267,7 +281,7 @@ async function uploadFileToDrive({
     : {
         name: fileName,
         mimeType,
-        parents: folderId ? [folderId] : undefined,
+        parents: targetFolderId ? [targetFolderId] : undefined,
       };
   const boundary = `drive-upload-${Date.now()}`;
   const delimiter = `--${boundary}\r\n`;
@@ -321,7 +335,7 @@ async function uploadFileToDrive({
     name: payload.name,
     webViewLink: payload.webViewLink,
     webContentLink: payload.webContentLink,
-    folderId,
+    folderId: targetFolderId,
   };
 }
 
@@ -374,9 +388,10 @@ async function cleanupAudioCollectionFolder({
   folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || DEFAULT_DRIVE_FOLDER_ID,
 }) {
   const accessToken = await getAccessToken();
-  if (!accessToken || !folderId) return [];
+  const targetFolderId = normalizeDriveFolderId(folderId);
+  if (!accessToken || !targetFolderId) return [];
 
-  const query = `'${folderId}' in parents and trashed = false`;
+  const query = `'${targetFolderId}' in parents and trashed = false`;
   const searchUrl = new URL('https://www.googleapis.com/drive/v3/files');
   searchUrl.searchParams.set('q', query);
   searchUrl.searchParams.set('fields', 'files(id,name,mimeType)');
@@ -401,6 +416,49 @@ async function cleanupAudioCollectionFolder({
   });
 
   return trashFiles(filesToTrash, accessToken);
+}
+
+async function getDriveStatus({ folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || DEFAULT_DRIVE_FOLDER_ID } = {}) {
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    const error = new Error('Google Drive is not configured.');
+    error.status = 503;
+    throw error;
+  }
+
+  const targetFolderId = normalizeDriveFolderId(folderId);
+  const aboutUrl = new URL('https://www.googleapis.com/drive/v3/about');
+  aboutUrl.searchParams.set('fields', 'user(emailAddress,displayName),storageQuota(limit,usage,usageInDrive,usageInDriveTrash)');
+
+  const aboutResponse = await fetch(aboutUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const about = await aboutResponse.json();
+  if (!aboutResponse.ok) {
+    throw new Error(about.error?.message || 'Google Drive account lookup failed.');
+  }
+
+  let folder = null;
+  if (targetFolderId) {
+    const folderUrl = new URL(`https://www.googleapis.com/drive/v3/files/${targetFolderId}`);
+    folderUrl.searchParams.set('fields', 'id,name,mimeType,driveId,owners(emailAddress,displayName),capabilities(canAddChildren,canEdit)');
+    folderUrl.searchParams.set('supportsAllDrives', 'true');
+
+    const folderResponse = await fetch(folderUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    folder = await folderResponse.json();
+    if (!folderResponse.ok) {
+      throw new Error(folder.error?.message || 'Google Drive folder lookup failed.');
+    }
+  }
+
+  return {
+    account: about.user,
+    storageQuota: about.storageQuota,
+    folder,
+    folderId: targetFolderId,
+  };
 }
 
 async function downloadFileFromDrive(fileId) {
@@ -428,6 +486,8 @@ module.exports = {
   buildOAuthConsentUrl,
   downloadFileFromDrive,
   exchangeOAuthCode,
+  getDriveStatus,
+  normalizeDriveFolderId,
   startDeviceAuthorization,
   exchangeDeviceCode,
   saveRefreshTokenToEnv,

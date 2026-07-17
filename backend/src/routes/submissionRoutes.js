@@ -10,6 +10,7 @@ const {
   googleDriveOAuthCallback,
   googleDriveDeviceAuth,
   googleDriveDeviceToken,
+  googleDriveStatus,
   generateReport,
   getReport,
   getAdminUsers,
@@ -27,6 +28,7 @@ router.get('/google-drive/auth', googleDriveAuth);
 router.get('/google-drive/oauth2callback', googleDriveOAuthCallback);
 router.get('/google-drive/device-auth', googleDriveDeviceAuth);
 router.post('/google-drive/device-token', googleDriveDeviceToken);
+router.get('/google-drive/status', requireAuth, requireAdmin, googleDriveStatus);
 router.get('/get-report/:id', requireAuth, getReport);
 router.get('/my-submissions', requireAuth, getMySubmissions);
 router.get('/admin/users', requireAuth, requireAdmin, getAdminUsers);

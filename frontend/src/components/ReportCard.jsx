@@ -30,6 +30,12 @@ function displayClassification(value) {
   return value;
 }
 
+function spectrogramSrc(spectrogram) {
+  if (!spectrogram?.data) return '';
+  if (spectrogram.encoding === 'base64') return `data:${spectrogram.mimeType || 'image/svg+xml'};base64,${spectrogram.data}`;
+  return `data:${spectrogram.mimeType || 'image/svg+xml'};utf8,${encodeURIComponent(spectrogram.data)}`;
+}
+
 function BiomarkerTable({ biomarkers }) {
   if (!biomarkers) return null;
   return (
@@ -188,6 +194,14 @@ export default function ReportCard({
                   <p>{response.transcripts?.normalized || 'No normalized transcript available.'}</p>
                 </div>
               </div>
+              {response.spectrogram?.data ? (
+                <div className="spectrogram-panel">
+                  <span>Spectrogram</span>
+                  <img src={spectrogramSrc(response.spectrogram)} alt={`${response.questionId} spectrogram`} />
+                </div>
+              ) : response.spectrogramError ? (
+                <p className="inline-status">Spectrogram status: {response.spectrogramError}</p>
+              ) : null}
             </article>
           ))}
         </div>

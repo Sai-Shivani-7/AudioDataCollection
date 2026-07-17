@@ -16,6 +16,15 @@ const responseSchema = new mongoose.Schema(
     audioSize: Number,
     durationMs: Number,
     transcripts: transcriptSchema,
+    spectrogram: {
+      fileName: String,
+      mimeType: String,
+      encoding: String,
+      data: String,
+      generatedAt: Date,
+      parameters: mongoose.Schema.Types.Mixed,
+    },
+    spectrogramError: String,
     result: {
       type: mongoose.Schema.Types.Mixed,
     },
