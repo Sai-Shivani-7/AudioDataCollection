@@ -293,6 +293,41 @@ function confidenceFromWordCount(wordCount, responseCount) {
   return 'Low';
 }
 
+function averageAcousticBiomarkers(submission) {
+  const responses = orderedResponses(submission);
+  const available = responses
+    .map((response) => response?.spectrogram?.biomarkers)
+    .filter((biomarkers) => biomarkers && Object.keys(biomarkers).length);
+  if (!available.length) return {};
+
+  const names = Object.keys(available[0]);
+  return Object.fromEntries(names.map((name) => {
+    const values = available.map((biomarkers) => Number(biomarkers[name]?.value)).filter(Number.isFinite);
+    const exemplar = available.find((biomarkers) => biomarkers[name])?.[name] || {};
+    const value = values.reduce((sum, item) => sum + item, 0) / Math.max(values.length, 1);
+    return [name, { ...exemplar, value: Number(value.toFixed(name === 'spectral_flatness' || name === 'voiced_frame_ratio' ? 4 : 2)) }];
+  }));
+}
+
+function acousticFindingsFromBiomarkers(biomarkers) {
+  if (!Object.keys(biomarkers || {}).length) {
+    return ['Acoustic feature values will be available for newly processed WAV recordings.'];
+  }
+  return [
+    `Mean spectral centroid: ${biomarkers.spectral_centroid_hz?.value ?? 'N/A'} Hz.`,
+    `Mean spectral bandwidth: ${biomarkers.spectral_bandwidth_hz?.value ?? 'N/A'} Hz; spectral roll-off: ${biomarkers.spectral_rolloff_hz?.value ?? 'N/A'} Hz.`,
+    `Mean energy: ${biomarkers.mean_energy_db?.value ?? 'N/A'} dB; voiced-frame ratio: ${biomarkers.voiced_frame_ratio?.value ?? 'N/A'}.`,
+  ];
+}
+
+function acousticInterpretationFromBiomarkers(biomarkers) {
+  if (!Object.keys(biomarkers || {}).length) return [];
+  return [{
+    biomarker: 'acoustic_summary',
+    text: `The saved spectrogram has a mean spectral centroid of ${biomarkers.spectral_centroid_hz?.value ?? 'N/A'} Hz, mean bandwidth of ${biomarkers.spectral_bandwidth_hz?.value ?? 'N/A'} Hz, and voiced-frame ratio of ${biomarkers.voiced_frame_ratio?.value ?? 'N/A'}. These descriptive acoustic measures should be interpreted with recording conditions and the full assessment context.`,
+  }];
+}
+
 function buildStructuredSubmissionJson(submission) {
   const entries = orderedResponseEntries(submission);
   const transcripts = {};
@@ -340,6 +375,10 @@ function buildReport(submission) {
       question: response.question,
       ...response.result,
     }));
+  const acousticBiomarkers = averageAcousticBiomarkers(submission);
+  const savedSpectrogram = orderedResponses(submission)
+    .map((response) => response?.spectrogram)
+    .find((spectrogram) => spectrogram?.data) || null;
 
   return {
     title: 'PATIENT SPEECH ANALYSIS REPORT',
@@ -350,9 +389,12 @@ function buildReport(submission) {
     decisionThreshold: finalReport.decisionThreshold,
     uncertaintyMargin: finalReport.uncertaintyMargin,
     biomarkers: finalReport.biomarkers,
+    acousticBiomarkers,
+    spectrogram: savedSpectrogram,
     linguisticFindings: finalReport.linguisticFindings,
     syntacticFindings: finalReport.syntacticFindings,
-    clinicalInterpretation: finalReport.clinicalInterpretation,
+    acousticFindings: acousticFindingsFromBiomarkers(acousticBiomarkers),
+    clinicalInterpretation: [...finalReport.clinicalInterpretation, ...acousticInterpretationFromBiomarkers(acousticBiomarkers)],
     overallImpression: finalReport.overallImpression,
     finalSummary: structuredSubmission.final_report.final_summary,
     confidenceLevel: structuredSubmission.final_report.confidence_level,

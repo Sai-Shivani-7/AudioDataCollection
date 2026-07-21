@@ -99,6 +99,61 @@ async function existingProgressiveAudioEntries(submission) {
   }
 }
 
+async function restoreMissingSpectrogramsFromDriveZip(submission) {
+  if (!submission.progressiveZipGoogleDriveFileId) return false;
+  const responses = Array.from(submission.responses || []);
+  const missing = responses.filter(([, response]) => !response?.spectrogram?.data);
+  if (!missing.length) return false;
+
+  try {
+    const zipBuffer = await downloadFileFromDrive(submission.progressiveZipGoogleDriveFileId);
+    const entries = new Map(extractZipEntries(zipBuffer).map((entry) => [entry.name, entry.content]));
+    let restored = false;
+
+    for (const [questionId, response] of missing) {
+      const wav = entries.get(`audios/${questionId}.wav`);
+      const savedSvg = entries.get(`spectrograms/${questionId}.svg`);
+      let spectrogram = null;
+
+      if (wav) {
+        try {
+          spectrogram = buildSpectrogramFromWav(wav, {
+            fileName: `${questionId}-spectrogram.svg`,
+            title: `${questionId} spectrogram`,
+          });
+        } catch (error) {
+          console.warn(`Unable to rebuild spectrogram for ${questionId}:`, error.message);
+        }
+      }
+      if (!spectrogram && savedSvg) {
+        spectrogram = {
+          fileName: `${questionId}-spectrogram.svg`,
+          mimeType: 'image/svg+xml',
+          encoding: 'utf8',
+          data: savedSvg.toString('utf8'),
+          generatedAt: new Date(),
+          parameters: {},
+          biomarkers: {},
+        };
+      }
+
+      if (spectrogram) {
+        submission.responses.set(questionId, {
+          ...(response.toObject?.() || response),
+          spectrogram,
+          spectrogramError: undefined,
+        });
+        restored = true;
+      }
+    }
+    if (restored) await submission.save();
+    return restored;
+  } catch (error) {
+    console.warn('Unable to restore spectrograms from the Drive ZIP:', error.message);
+    return false;
+  }
+}
+
 async function buildFinalReportZip(submission, currentAudio) {
   const structuredSubmission = buildStructuredSubmissionJson(submission);
   const structuredJson = JSON.stringify(structuredSubmission, null, 2);
@@ -509,6 +564,7 @@ async function generateReport(req, res, next) {
       return res.status(400).json({ message: 'No voice responses found for this submission.' });
     }
 
+    await restoreMissingSpectrogramsFromDriveZip(submission);
     submission.report = buildReport(submission);
     submission.status = 'report-generated';
     const structuredSubmission = buildStructuredSubmissionJson(submission);
@@ -541,6 +597,13 @@ async function getReport(req, res, next) {
     const submission = await Submission.findOne(query);
     if (!submission) return res.status(404).json({ message: 'Submission not found.' });
     if (!submission.report) return res.status(404).json({ message: 'Report has not been generated yet.' });
+    const restoredSpectrograms = await restoreMissingSpectrogramsFromDriveZip(submission);
+    const responseHasSpectrogram = Array.from(submission.responses || []).some(([, response]) => response?.spectrogram?.data);
+    const reportNeedsSpectrogram = responseHasSpectrogram && !submission.report?.spectrogram?.data;
+    if (restoredSpectrograms || reportNeedsSpectrogram) {
+      submission.report = buildReport(submission);
+      await submission.save();
+    }
 
     // Convert Mongoose Map to a plain object for JSON serialization
     const responses = serializeResponses(submission.responses);

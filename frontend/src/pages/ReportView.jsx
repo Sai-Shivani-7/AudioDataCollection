@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Download } from 'lucide-react';
 import { api } from '../api/client';
 import ReportCard from '../components/ReportCard';
 
@@ -9,6 +9,10 @@ export default function ReportView() {
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  function downloadPdf() {
+    window.print();
+  }
 
   useEffect(() => {
     async function loadReport() {
@@ -29,10 +33,16 @@ export default function ReportView() {
 
   return (
     <main className="page">
-      <Link className="back-link" to="/admin">
-        <ArrowLeft size={18} />
-        Back to dashboard
-      </Link>
+      <div className="report-view-actions no-print">
+        <Link className="back-link" to="/admin">
+          <ArrowLeft size={18} />
+          Back to dashboard
+        </Link>
+        <button className="secondary pdf-download-button" type="button" onClick={downloadPdf} disabled={loading || Boolean(error)}>
+          <Download size={18} />
+          Download PDF
+        </button>
+      </div>
       {loading && <p className="inline-status">Loading report...</p>}
       {error && <p className="error">{error}</p>}
       {!loading && !error && (

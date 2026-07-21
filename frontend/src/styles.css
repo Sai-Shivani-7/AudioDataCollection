@@ -553,6 +553,21 @@ td {
   margin-bottom: 18px;
 }
 
+.report-view-actions {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.report-view-actions .back-link {
+  margin-bottom: 0;
+}
+
+.pdf-download-button {
+  flex: 0 0 auto;
+}
+
 .report {
   padding: 30px;
 }
@@ -626,6 +641,46 @@ td {
   background: #fff7ed;
   color: #9a3412;
   font-weight: 900;
+}
+
+.biomarker-table th {
+  background: #14324a;
+  color: #ffffff;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.biomarker-table td,
+.biomarker-table th {
+  padding: 10px 12px;
+}
+
+.feature-flag {
+  border-radius: 999px;
+  display: inline-block;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  padding: 4px 8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.feature-flag-high {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.feature-flag-low {
+  background: #fef3c7;
+  color: #a16207;
+}
+
+.feature-flag-normal {
+  background: #dcfce7;
+  color: #166534;
 }
 
 .clinical-sections {
@@ -831,6 +886,36 @@ td {
   font-weight: 900;
 }
 
+.response-analysis-grid {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.35fr);
+}
+
+.response-visual,
+.response-features {
+  min-width: 0;
+}
+
+.response-features {
+  background: #ffffff;
+  border: 1px solid #e4e9f0;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.response-features h3 {
+  color: #14213d;
+  font-size: 14px;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+}
+
+.response-features .biomarker-table {
+  min-width: 620px;
+}
+
 .transcript-columns {
   display: grid;
   gap: 12px;
@@ -876,6 +961,36 @@ td {
   max-height: 320px;
   object-fit: contain;
   width: 100%;
+}
+
+.report-spectrogram {
+  align-items: center;
+  background: #08141e;
+  border: 1px solid #d9e5ec;
+  border-radius: 10px;
+  display: grid;
+  justify-items: center;
+  margin: 14px 0 0;
+  max-width: 900px;
+  overflow: hidden;
+  padding: 14px;
+}
+
+.report-spectrogram img {
+  display: block;
+  height: auto;
+  image-rendering: pixelated;
+  max-height: 360px;
+  max-width: 100%;
+  object-fit: contain;
+  width: min(100%, 820px);
+}
+
+.report-spectrogram figcaption {
+  color: #c5d7e1;
+  font-size: 13px;
+  margin-top: 10px;
+  text-align: center;
 }
 
 .feature-grid {
@@ -951,7 +1066,8 @@ td {
 @media (max-width: 760px) {
   .top-nav,
   .page-header,
-  .report-header {
+  .report-header,
+  .report-view-actions {
     align-items: stretch;
     flex-direction: column;
   }
@@ -972,6 +1088,7 @@ td {
   .report-grid,
   .clinical-summary,
   .transcript-columns,
+  .response-analysis-grid,
   .feature-grid {
     grid-template-columns: 1fr;
   }
@@ -981,6 +1098,25 @@ td {
     padding: 20px;
   }
 
+}
+
+@media print {
+  .no-print,
+  .top-nav {
+    display: none !important;
+  }
+
+  .page,
+  .report {
+    box-shadow: none;
+    margin: 0;
+    max-width: none;
+    padding: 0;
+  }
+
+  .report-spectrogram {
+    break-inside: avoid;
+  }
 }
 
 /* Modal overlay styling */

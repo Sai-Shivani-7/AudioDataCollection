@@ -159,6 +159,61 @@ function renderSpectrogramSvg(matrix, title = 'Spectrogram') {
   ].join('');
 }
 
+function round(value, digits = 2) {
+  return Number(value.toFixed(digits));
+}
+
+function acousticBiomarkersFromMatrix(matrix) {
+  const rows = matrix.length;
+  const columns = matrix[0]?.length || 0;
+  const nyquistHz = TARGET_SR / 2;
+  const frames = [];
+
+  for (let column = 0; column < columns; column += 1) {
+    const powers = [];
+    let total = 0;
+    let weightedFrequency = 0;
+    let logPowerTotal = 0;
+    for (let row = 0; row < rows; row += 1) {
+      const db = matrix[row][column];
+      const power = 10 ** (db / 10);
+      const frequency = ((rows - 1 - row) / Math.max(rows - 1, 1)) * nyquistHz;
+      powers.push({ power, frequency });
+      total += power;
+      weightedFrequency += power * frequency;
+      logPowerTotal += Math.log(Math.max(power, 1e-12));
+    }
+    const centroid = total ? weightedFrequency / total : 0;
+    const bandwidth = total ? Math.sqrt(powers.reduce((sum, item) => sum + item.power * ((item.frequency - centroid) ** 2), 0) / total) : 0;
+    let cumulative = 0;
+    let rolloff = 0;
+    for (const item of powers) {
+      cumulative += item.power;
+      if (cumulative >= total * 0.85) { rolloff = item.frequency; break; }
+    }
+    const geometricMean = Math.exp(logPowerTotal / Math.max(rows, 1));
+    frames.push({
+      energyDb: 10 * Math.log10(Math.max(total / Math.max(rows, 1), 1e-12)),
+      centroid,
+      bandwidth,
+      rolloff,
+      flatness: total ? geometricMean / (total / rows) : 0,
+    });
+  }
+
+  const average = (key) => frames.reduce((sum, frame) => sum + frame[key], 0) / Math.max(frames.length, 1);
+  const maxEnergy = Math.max(...frames.map((frame) => frame.energyDb), -120);
+  const voicedRatio = frames.filter((frame) => frame.energyDb >= maxEnergy - 35).length / Math.max(frames.length, 1);
+  return {
+    mean_energy_db: { value: round(average('energyDb')), ref: 'Descriptive', flag: '' },
+    spectral_centroid_hz: { value: round(average('centroid')), ref: 'Descriptive', flag: '' },
+    spectral_bandwidth_hz: { value: round(average('bandwidth')), ref: 'Descriptive', flag: '' },
+    spectral_rolloff_hz: { value: round(average('rolloff')), ref: 'Descriptive', flag: '' },
+    spectral_flatness: { value: round(average('flatness'), 4), ref: 'Descriptive', flag: '' },
+    voiced_frame_ratio: { value: round(voicedRatio, 4), ref: 'Descriptive', flag: '' },
+  };
+}
+
 function buildSpectrogramFromWav(buffer, { fileName = 'spectrogram.svg', title = 'Spectrogram' } = {}) {
   const decoded = decodeWav(buffer);
   const resampled = resampleLinear(decoded.samples, decoded.sampleRate, TARGET_SR);
@@ -183,6 +238,7 @@ function buildSpectrogramFromWav(buffer, { fileName = 'spectrogram.svg', title =
       bins: N_FFT / 2 + 1,
       sourceSampleRate: decoded.sampleRate,
     },
+    biomarkers: acousticBiomarkersFromMatrix(matrix),
   };
 }
 

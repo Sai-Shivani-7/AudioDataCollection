@@ -1,4 +1,4 @@
-import { AlertTriangle, FileArchive, FileText } from 'lucide-react';
+import { AlertTriangle, FileText } from 'lucide-react';
 
 const BIOMARKER_ORDER = [
   'type_token_ratio',
@@ -19,6 +19,43 @@ const BIOMARKER_ORDER = [
   'verb_ratio',
 ];
 
+const BIOMARKER_LABELS = {
+  type_token_ratio: 'Type-token ratio',
+  repetition_rate: 'Repetition rate',
+  disfluency_ratio: 'Disfluency ratio',
+  negative_word_ratio: 'Negative-word ratio',
+  word_entropy: 'Word entropy',
+  bigram_diversity: 'Bigram diversity',
+  semantic_coherence: 'Semantic coherence',
+  coherence_len_drift: 'Coherence-length drift',
+  coherence_len_std: 'Coherence-length standard deviation',
+  first_person_ratio: 'First-person ratio',
+  sentence_fragmentation: 'Sentence fragmentation',
+  sent_len_mean: 'Mean sentence length',
+  dep_depth_mean: 'Mean dependency depth',
+  clause_count_ratio: 'Clause-count ratio',
+  pronoun_ratio: 'Pronoun ratio',
+  verb_ratio: 'Verb ratio',
+};
+
+const ACOUSTIC_BIOMARKER_ORDER = [
+  'mean_energy_db',
+  'spectral_centroid_hz',
+  'spectral_bandwidth_hz',
+  'spectral_rolloff_hz',
+  'spectral_flatness',
+  'voiced_frame_ratio',
+];
+
+const ACOUSTIC_BIOMARKER_LABELS = {
+  mean_energy_db: 'Mean energy (dB)',
+  spectral_centroid_hz: 'Spectral centroid (Hz)',
+  spectral_bandwidth_hz: 'Spectral bandwidth (Hz)',
+  spectral_rolloff_hz: 'Spectral roll-off (Hz)',
+  spectral_flatness: 'Spectral flatness',
+  voiced_frame_ratio: 'Voiced-frame ratio',
+};
+
 function formatValue(value) {
   return Number(value || 0).toFixed(4);
 }
@@ -36,10 +73,10 @@ function spectrogramSrc(spectrogram) {
   return `data:${spectrogram.mimeType || 'image/svg+xml'};utf8,${encodeURIComponent(spectrogram.data)}`;
 }
 
-function BiomarkerTable({ biomarkers }) {
+function BiomarkerTable({ biomarkers, label = 'Feature summary', order = BIOMARKER_ORDER, labels = BIOMARKER_LABELS }) {
   if (!biomarkers) return null;
   return (
-    <div className="biomarker-table-wrap">
+    <div className="biomarker-table-wrap" aria-label={label}>
       <table className="biomarker-table">
         <thead>
           <tr>
@@ -50,15 +87,15 @@ function BiomarkerTable({ biomarkers }) {
           </tr>
         </thead>
         <tbody>
-          {BIOMARKER_ORDER.map((name) => {
+          {order.map((name) => {
             const item = biomarkers[name];
             if (!item) return null;
             return (
               <tr key={name} className={item.flag ? 'flagged' : ''}>
-                <td>{name}</td>
+                <td>{labels[name] || name}</td>
                 <td>{formatValue(item.value)}</td>
                 <td>{item.ref}</td>
-                <td>{item.flag ? `${item.flag === 'HIGH' ? '↑' : '↓'} ${item.flag}` : ''}</td>
+                <td>{item.flag ? <span className={`feature-flag feature-flag-${item.flag.toLowerCase()}`}>{item.flag}</span> : <span className="feature-flag feature-flag-normal">Within range</span>}</td>
               </tr>
             );
           })}
@@ -84,10 +121,6 @@ export default function ReportCard({
   responses,
   combinedTranscript,
   combinedTranscriptUrl,
-  combinedResultUrl,
-  reportUrl,
-  zipFileUrl,
-  zipGoogleDriveUrl,
   zipUploadError,
 }) {
   if (!report) {
@@ -95,18 +128,22 @@ export default function ReportCard({
       <section className="empty-state">
         <FileText size={30} />
         <h2>No report available</h2>
-        <p>Generate a report after saving the three voice responses.</p>
+        <p>Generate a report after saving voice responses.</p>
       </section>
     );
   }
 
-  const responseList = Object.values(responses || {});
+  const primarySpectrogramResponse = ['session', 'q4', 'q3', 'q2', 'q1']
+    .map((questionId) => responses?.[questionId])
+    .find((response) => response?.spectrogram?.data);
+  const savedSpectrogram = report.spectrogram?.data
+    ? report.spectrogram
+    : primarySpectrogramResponse?.spectrogram;
 
   return (
     <article className="report clinical-report">
       <header className="clinical-header">
         <h1>PATIENT SPEECH ANALYSIS REPORT</h1>
-        <p>Research Prototype - NOT for Clinical Use</p>
       </header>
 
       <section className="clinical-summary">
@@ -128,8 +165,32 @@ export default function ReportCard({
       )}
 
       <section className="report-section">
-        <h2>Biomarker Summary</h2>
-        <BiomarkerTable biomarkers={report.biomarkers} />
+        <h2>Linguistic Biomarker Summary</h2>
+        <BiomarkerTable biomarkers={report.biomarkers} label="Linguistic feature summary" />
+      </section>
+
+      <section className="report-section">
+        <h2>Saved Spectrogram</h2>
+        {savedSpectrogram ? (
+          <figure className="report-spectrogram">
+            <img src={spectrogramSrc(savedSpectrogram)} alt="Saved recording spectrogram" />
+            <figcaption>{savedSpectrogram.fileName || 'Saved recording spectrogram'}</figcaption>
+          </figure>
+        ) : (
+          <p className="inline-status">No saved spectrogram is available in this report record. Generate the report after saving a WAV response.</p>
+        )}
+      </section>
+
+      <section className="report-section">
+        <h2>Acoustic Biomarker Summary</h2>
+        {Object.keys(report.acousticBiomarkers || {}).length ? (
+          <BiomarkerTable
+            biomarkers={report.acousticBiomarkers}
+            label="Acoustic feature summary"
+            order={ACOUSTIC_BIOMARKER_ORDER}
+            labels={ACOUSTIC_BIOMARKER_LABELS}
+          />
+        ) : <p className="inline-status">Acoustic feature values will be restored from the saved ZIP or calculated for newly saved WAV responses.</p>}
       </section>
 
       <section className="report-section clinical-sections">
@@ -142,7 +203,11 @@ export default function ReportCard({
           <FindingList items={report.syntacticFindings} />
         </div>
         <div>
-          <h2>3. Clinical Interpretation</h2>
+          <h2>3. Acoustic Biomarker Findings</h2>
+          <FindingList items={report.acousticFindings} />
+        </div>
+        <div>
+          <h2>4. Clinical Interpretation</h2>
           <div className="interpretation-list">
             {(report.clinicalInterpretation || []).map((item) => (
               <div key={`${item.biomarker}-${item.text}`} className="interpretation-item">
@@ -153,58 +218,19 @@ export default function ReportCard({
           </div>
         </div>
         <div>
-          <h2>4. Overall Impression</h2>
+          <h2>5. Overall Impression</h2>
           <p className="overall-impression">{report.overallImpression}</p>
         </div>
       </section>
 
       <section className="report-section">
-        <h2>Stored Response Files</h2>
-        <div className="asset-links">
-          {combinedTranscriptUrl && <a className="icon-link" href={combinedTranscriptUrl} target="_blank" rel="noreferrer"><FileText size={16} />Combined transcript</a>}
-          {combinedResultUrl && <a className="icon-link" href={combinedResultUrl} target="_blank" rel="noreferrer"><FileText size={16} />Combined result</a>}
-          {reportUrl && <a className="icon-link" href={reportUrl} target="_blank" rel="noreferrer"><FileText size={16} />Final report</a>}
-          {(zipFileUrl || zipGoogleDriveUrl) && <span className="icon-link"><FileArchive size={16} />Final report ZIP saved</span>}
+        <h2>Transcript</h2>
+        <div className="combined-transcript">
+          <span>Stored transcript</span>
+          <p>{combinedTranscript || 'No transcript was stored for this report.'}</p>
         </div>
+        {combinedTranscriptUrl && <a className="icon-link transcript-download" href={combinedTranscriptUrl} target="_blank" rel="noreferrer"><FileText size={16} />Open transcript file</a>}
         {zipUploadError && <p className="inline-status">Drive ZIP upload status: {zipUploadError}</p>}
-        {combinedTranscript && (
-          <div className="combined-transcript">
-            <span>Concatenated transcript</span>
-            <p>{combinedTranscript}</p>
-          </div>
-        )}
-      </section>
-
-      <section className="report-section">
-        <h2>Question Audio and Transcripts</h2>
-        <div className="response-list">
-          {responseList.map((response) => (
-            <article className="response-card" key={response.questionId}>
-              <header>
-                <strong>{response.question}</strong>
-                <span>{displayClassification(response.result?.classification)}</span>
-              </header>
-              <div className="transcript-columns">
-                <div>
-                  <span>Raw transcript</span>
-                  <p>{response.transcripts?.raw || 'No transcript captured.'}</p>
-                </div>
-                <div>
-                  <span>Normalized transcript</span>
-                  <p>{response.transcripts?.normalized || 'No normalized transcript available.'}</p>
-                </div>
-              </div>
-              {response.spectrogram?.data ? (
-                <div className="spectrogram-panel">
-                  <span>Spectrogram</span>
-                  <img src={spectrogramSrc(response.spectrogram)} alt={`${response.questionId} spectrogram`} />
-                </div>
-              ) : response.spectrogramError ? (
-                <p className="inline-status">Spectrogram status: {response.spectrogramError}</p>
-              ) : null}
-            </article>
-          ))}
-        </div>
       </section>
 
       <footer className="clinical-disclaimer">

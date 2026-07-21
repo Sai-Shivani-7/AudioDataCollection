@@ -8,19 +8,28 @@ function makeSessionId(doctorId) {
   return `session-${doctorId}-${Date.now()}`;
 }
 
-function createSpeechRecognizer(onText) {
+function createSpeechRecognizer({ onText, onError, onEnd }) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) return null;
   const recognizer = new SpeechRecognition();
+  let committedTranscript = '';
   recognizer.continuous = true;
   recognizer.interimResults = true;
+  recognizer.maxAlternatives = 1;
   recognizer.lang = 'en-US';
   recognizer.onresult = (event) => {
-    const text = Array.from(event.results)
-      .map((result) => result[0]?.transcript || '')
-      .join(' ');
-    onText(text);
+    let interimTranscript = '';
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      const result = event.results[index];
+      const text = result[0]?.transcript?.trim() || '';
+      if (!text) continue;
+      if (result.isFinal) committedTranscript = `${committedTranscript} ${text}`.trim();
+      else interimTranscript = `${interimTranscript} ${text}`.trim();
+    }
+    onText(`${committedTranscript} ${interimTranscript}`.trim());
   };
+  recognizer.onerror = (event) => onError?.(event.error);
+  recognizer.onend = () => onEnd?.(recognizer);
   return recognizer;
 }
 
@@ -86,6 +95,8 @@ export default function UserDashboard({ currentUser }) {
   const [sessionId, setSessionId] = useState(() => makeSessionId(currentUser?.id));
   const mediaRecorderRef = useRef(null);
   const speechRecognizerRef = useRef(null);
+  const keepRecognitionAliveRef = useRef(false);
+  const recognitionRestartTimerRef = useRef(null);
   const chunksRef = useRef([]);
   const recordingStartedAtRef = useRef(null);
 
@@ -107,10 +118,31 @@ export default function UserDashboard({ currentUser }) {
   const hasAllResponses = Object.keys(savedResponses).length === voiceQuestions.length;
   const currentQuestionSaved = savedResponses[currentQuestion?.id];
 
+  function stopSpeechRecognition() {
+    keepRecognitionAliveRef.current = false;
+    clearTimeout(recognitionRestartTimerRef.current);
+    recognitionRestartTimerRef.current = null;
+    speechRecognizerRef.current?.stop();
+  }
+
+  function restartSpeechRecognition(recognizer) {
+    if (!keepRecognitionAliveRef.current) return;
+    clearTimeout(recognitionRestartTimerRef.current);
+    recognitionRestartTimerRef.current = setTimeout(() => {
+      if (!keepRecognitionAliveRef.current) return;
+      try {
+        recognizer.start();
+      } catch (error) {
+        if (error.name === 'InvalidStateError') return;
+        recognitionRestartTimerRef.current = setTimeout(() => restartSpeechRecognition(recognizer), 300);
+      }
+    }, 150);
+  }
+
   function resetRecordingState() {
     if (isRecording) {
       mediaRecorderRef.current?.stop();
-      speechRecognizerRef.current?.stop();
+      stopSpeechRecognition();
       setIsRecording(false);
     }
 
@@ -171,9 +203,24 @@ export default function UserDashboard({ currentUser }) {
       recordingStartedAtRef.current = Date.now();
       mediaRecorderRef.current = recorder;
 
-      const recognizer = createSpeechRecognizer(setTranscript);
+      const recognizer = createSpeechRecognizer({
+        onText: setTranscript,
+        onError: (recognitionError) => {
+          if (recognitionError === 'no-speech' || recognitionError === 'aborted') return;
+          if (recognitionError === 'not-allowed' || recognitionError === 'service-not-allowed') {
+            keepRecognitionAliveRef.current = false;
+            setError('Speech recognition permission was denied. Audio recording will continue.');
+          }
+        },
+        onEnd: restartSpeechRecognition,
+      });
       speechRecognizerRef.current = recognizer;
-      recognizer?.start();
+      if (recognizer) {
+        keepRecognitionAliveRef.current = true;
+        recognizer.start();
+      } else {
+        setStatus('Audio is recording, but live transcription is unavailable in this browser.');
+      }
       setIsRecording(true);
     } catch (recordingError) {
       setError(recordingError.message || 'Microphone permission was denied.');
@@ -182,7 +229,7 @@ export default function UserDashboard({ currentUser }) {
 
   function stopRecording() {
     mediaRecorderRef.current?.stop();
-    speechRecognizerRef.current?.stop();
+    stopSpeechRecognition();
     setIsRecording(false);
     setRecordingStopped(true);
   }
@@ -198,7 +245,7 @@ export default function UserDashboard({ currentUser }) {
 
   function startNewPatient() {
     mediaRecorderRef.current?.stop();
-    speechRecognizerRef.current?.stop();
+    stopSpeechRecognition();
     setSessionId(makeSessionId(currentUser?.id));
     setPatient({ name: '', contact: '' });
     setStepIndex(0);
